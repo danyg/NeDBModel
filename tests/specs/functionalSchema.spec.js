@@ -131,7 +131,7 @@ define(['database', 'utils', 'mocks/tasks', 'mocks/companies', 'mocks/employees'
 				PepeCo,
 				tasks = {}
 			;
-			window.tasks = tasks;
+
 			runs(function() {
 				PepeCo = new Company({
 					name: 'PePeCo',

@@ -5,7 +5,7 @@
  * 
  */
 
-define(['database'], function(database, companies){
+define(['database'], function(database){
 	function Company(){
 		database.SchemaDocument.apply(this, arguments);
 	}
