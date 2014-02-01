@@ -8,6 +8,10 @@
 	'use strict';
 	nwgui.App.setCrashDumpDir(nwgui.App.dataPath);
 	
+	// clean exceptions from a previous load (refresh case)
+	if(process._events.uncaughtException.length > 0){
+		process._events.uncaughtException.splice(0,1);
+	}
 	process.on('uncaughtException', function(e){
 		console.group('Node uncaughtException');
 		if(!!e.message){
@@ -19,7 +23,12 @@
 		console.log(e);
 		console.groupEnd();
 	});
-	process._events.uncaughtException.splice(0,1);
+	// Clean Buggy thing
+	if(process._events.uncaughtException.length > 1 
+		&& !!process._events.uncaughtException[0].toString().match(/native code/)
+	){
+		process._events.uncaughtException.splice(0,1);
+	}
 	
 	var info_tests = requireNode('./tests/info_tests');
 
