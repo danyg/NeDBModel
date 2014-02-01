@@ -31,6 +31,8 @@ define(['./utils'], function(utils){
 				promises.push(
 					this._asyncSearch(item.substring(5))
 				);
+			}else if(rawData[i] instanceof this.docCtor){
+				this.push(rawData[i]);
 			}else{
 				promises.push( 
 					utils.deferredUnserializeAssignment(this.docCtor, item, this, 'LIST_' + this.docCtor.name+'_'+item.name)

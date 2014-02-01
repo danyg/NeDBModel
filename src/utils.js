@@ -27,8 +27,7 @@ define(['jquery'], function($){
 		this.fail = promise.fail;
 	}
 	
-	function deferredUnserializeAssignment(docCtor, item, toPush, DBG_ID){
-		window.debug ? console.log(DBG_ID + ': CREATING AsyncDocument', item) : '';
+	function deferredUnserializeAssignment(docCtor, item, toPush){
 		var dfrIX,
 			promise = docCtor.unserialize(item),
 			aDocument = new AsyncDocument(
@@ -37,7 +36,6 @@ define(['jquery'], function($){
 			);
 		dfrIX = toPush.push(aDocument) - 1;
 		promise.done(function(doc){
-			window.debug ? console.log(DBG_ID + ': REPLACING AsyncDocument', doc) : '';
 			toPush[dfrIX] = doc;
 		});
 

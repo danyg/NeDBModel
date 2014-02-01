@@ -70,7 +70,6 @@ define(['nwgui', './utils'], function(nwgui, utils){
 			this.createDocuments(docs)
 				.then(
 					function(ObjDocs){
-						console.log('createDocuments RESPONSE', ObjDocs, 'FROM', docs, me.docCtor.name);
 						deferred.resolve(ObjDocs);
 					},
 					deferred.reject
@@ -90,23 +89,19 @@ define(['nwgui', './utils'], function(nwgui, utils){
 	 * @returns {Promise}
 	 */
 	Model.prototype.createDocuments = function(rawData){
-		var DBG_ID = this.docCtor.name + "_" + rawData.name + "_" + parseInt(Math.random() * 10000);
-		
 		var i, 
 			docs = [], 
 			promises = [], 
 			defer = utils.defer()
 		;
-		
-		window.debug ? console.log(DBG_ID + ': Model.createDocuments', rawData) : '';
-		
+
 		if(utils.isArray(rawData)){
 			for(i = 0; i < rawData.length; i++){
 				if(rawData[i] instanceof this.docCtor){
 					docs.push( rawData[i] );
 				}else{
 					promises.push( 
-						utils.deferredUnserializeAssignment(this.docCtor, rawData[i], docs, DBG_ID)
+						utils.deferredUnserializeAssignment(this.docCtor, rawData[i], docs)
 					);
 				}
 			}
@@ -120,7 +115,6 @@ define(['nwgui', './utils'], function(nwgui, utils){
 		
 		utils.all(promises)
 			.done(function(){
-				window.debug ? console.log(DBG_ID + ': Model.createDocuments.resolve', docs, arguments) : '';
 				defer.resolve(docs);
 			})
 			.fail(function(){
@@ -270,11 +264,8 @@ define(['nwgui', './utils'], function(nwgui, utils){
 		var defer = utils.defer(),
 			me = this
 		;
-		
-		window.debug ? console.log('inserting', this._getRaw(docs)) : '';
-		
+
 		this.db.insert(this._getRaw(docs), function(err, docs){
-			window.debug ? console.log('insert return', err, docs) : '';
 			me._dbReturn(defer, err, docs);
 		});
 		

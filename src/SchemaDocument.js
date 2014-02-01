@@ -32,8 +32,6 @@ define(['./utils'], function(utils){
 			defer = utils.defer(),
 			promises = []
 		;
-		
-window.debug ? console.log('SchemaDocument.set', this.constructor.name, rawData) : '';
 
 		var defer = utils.defer();
 		if(rawData.hasOwnProperty('_id')){
@@ -103,11 +101,11 @@ window.debug ? console.log('SchemaDocument.set', this.constructor.name, rawData)
 
 					}
 				}catch(e){
-window.debug ? console.group('DEBUGGIN ERROR LOG', rawData[fName] + ' can be converted to ' + this.schema[fName].type.name) : '';
-window.debug ? console.log(e.message) : '';
-window.debug ? console.log(e.stack) : '';
-window.debug ? console.groupEnd() : '';
-					
+					window.debug ? console.group('DEBUGGIN ERROR LOG', rawData[fName] + ' can be converted to ' + this.schema[fName].type.name) : '';
+					window.debug ? console.log(e.message) : '';
+					window.debug ? console.log(e.stack) : '';
+					window.debug ? console.groupEnd() : '';
+
 					throw TypeError(rawData[fName] + ' can be converted to ' + this.schema[fName].type.name);
 				}
 			}else{
@@ -166,8 +164,7 @@ window.debug ? console.groupEnd() : '';
 
 			for(i=0; i < this.relations.length; i++){
 				rName = this.relations[i];
-	window.debug ? console.log("SAVING: " + this.constructor.name + '.' + rName) : '';
-				if(!!this[rName]){
+				if(!!this[rName] && this[rName].save){
 					promises.push( this[rName].save() );
 				}
 			}
@@ -216,32 +213,37 @@ window.debug ? console.groupEnd() : '';
 	SchemaDocument.serialize = function(instance){
 		var rawData = {}, i, fName, fDef, item;
 
-		if(instance.hasOwnProperty('_id')){
-			rawData._id = instance._id;
-		}
+		if(instance.fields && instance.unique && instance.relations){
 
-		for(i = 0; i < instance.fields.length; i++){
-			fName = instance.fields[i];
-			fDef = instance.schema[fName];
-			item = instance[fName];
+			if(instance.hasOwnProperty('_id')){
+				rawData._id = instance._id;
+			}
 
-			if(instance.hasOwnProperty(fName) && !!instance[fName]){
-				if(instance.schema[fName].type.hasOwnProperty('serialize')){
-					if(!!item._id){ // is persisted!
-						rawData[fName] = '#REF_' + item._id;
+			for(i = 0; i < instance.fields.length; i++){
+				fName = instance.fields[i];
+				fDef = instance.schema[fName];
+				item = instance[fName];
+
+				if(instance.hasOwnProperty(fName) && !!instance[fName]){
+					if(instance.schema[fName].type.hasOwnProperty('serialize')){
+						if(!!item._id){ // is persisted!
+							rawData[fName] = '#REF_' + item._id;
+						}else{
+							rawData[fName] = instance.schema[fName].type.serialize( instance[fName] );
+						}
 					}else{
-						rawData[fName] = instance.schema[fName].type.serialize( instance[fName] );
-					}
-				}else{
-					// consider this as a basicType
-					if(fName.charAt(0) !== '_'){
-						rawData[fName] = item;
+						// consider this as a basicType
+						if(fName.charAt(0) !== '_'){
+							rawData[fName] = item;
+						}
 					}
 				}
 			}
+			
+			return rawData;
+		}else{
+			return instance;
 		}
-
-		return rawData;
 	};
 
 	SchemaDocument.inherit = function(ctor, schema){
