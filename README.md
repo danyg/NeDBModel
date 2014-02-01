@@ -60,3 +60,6 @@ define(['database', 'models/tasks'], function(database, tasks){
 
 - Node compatibility
 - Searchs in the relations like, companies.find({'otherTasks': {$in: ['software']}); this don´t work with relations
+
+[![Analytics](https://ga-beacon.appspot.com/UA-47717226-1/NeDBModel/home)](https://github.com/igrigorik/ga-beacon)
+
