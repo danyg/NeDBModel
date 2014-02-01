@@ -5,7 +5,7 @@
  * 
  */
 
-define(['./SchemaDocument.js', './SchemaLessDocument.js', './NeDBModel.js', './List.js'], 
+define(['./SchemaDocument', './SchemaLessDocument', './NeDBModel', './List'], 
 function(SchemaDocument, SchemaLessDocument, NeDBModel, List){
 	'use strict';
 	

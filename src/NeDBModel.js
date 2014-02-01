@@ -5,10 +5,10 @@
  * 
  */
 
-define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
+define(['nwgui', './utils'], function(nwgui, utils){
 	'use strict';
 	
-	var Datastore = nrequire('nedb');
+	var Datastore = requireNode('nedb');
 	
 	function Model(documentCtor){
 		if(!documentCtor instanceof Function){
@@ -36,8 +36,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 		}
 
 		this.db = new Datastore({
-			filename: dbName + '.db',
-			nodeWebkitAppName: nwgui.App.manifest.name
+			filename: nwgui.App.dataPath + '/nedb-data/' + dbName + '.db'
 		});
 		this.db.loadDatabase();
 		if(this.docCtor.prototype.unique.length > 0){
@@ -64,11 +63,18 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	 * @returns {undefined}
 	 */
 	Model.prototype._dbReturn = function(deferred, err, docs){
+		var me = this;
 		if(err){
 			deferred.reject(err);
 		}else if(docs !== null){
 			this.createDocuments(docs)
-				.then(deferred.resolve, deferred.reject)
+				.then(
+					function(ObjDocs){
+						console.log('createDocuments RESPONSE', ObjDocs, 'FROM', docs, me.docCtor.name);
+						deferred.resolve(ObjDocs);
+					},
+					deferred.reject
+				)
 			;
 		}else{
 			deferred.resolve([]);
@@ -84,29 +90,37 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	 * @returns {Promise}
 	 */
 	Model.prototype.createDocuments = function(rawData){
+		var DBG_ID = this.docCtor.name + "_" + rawData.name + "_" + parseInt(Math.random() * 10000);
+		
 		var i, 
 			docs = [], 
 			promises = [], 
-			defer = system.defer()
+			defer = utils.defer()
 		;
 		
-		if($.isArray(rawData)){
+		window.debug ? console.log(DBG_ID + ': Model.createDocuments', rawData) : '';
+		
+		if(utils.isArray(rawData)){
 			for(i = 0; i < rawData.length; i++){
 				if(rawData[i] instanceof this.docCtor){
 					docs.push( rawData[i] );
 				}else{
-					docs.push(new this.docCtor);
-					promises.push(this.docCtor.unserialize(rawData[i]));
+					promises.push( 
+						utils.deferredUnserializeAssignment(this.docCtor, rawData[i], docs, DBG_ID)
+					);
 				}
 			}
 		}else if(!(rawData instanceof this.docCtor)){
-			promises.push(this.docCtor.unserialize(rawData));
+			// rawData in a serialized Object of this.docCtor and the 
+			// createDocuments must return an instance of that object unserilized
+			return this.docCtor.unserialize(rawData);
 		}else{
 			docs = rawData;
 		}
 		
-		$.when(promises)
+		utils.all(promises)
 			.done(function(){
+				window.debug ? console.log(DBG_ID + ': Model.createDocuments.resolve', docs, arguments) : '';
 				defer.resolve(docs);
 			})
 			.fail(function(){
@@ -120,18 +134,10 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 		return defer.promise();
 	};
 	
-	Model.prototype._asyncCD = function(dfrIX, docs){
-		return this.docCtor.unserialize(rawData)
-			.done(function(doc){
-				docs[dfrIX] = doc;
-			})
-		;
-	}
-	
 	Model.prototype._getRaw = function(docs){
 		var i, rawData = [];
 		
-		if($.isArray(docs)){
+		if(utils.isArray(docs)){
 			for(i = 0; i < docs.length; i++){
 				if(docs[i] instanceof this.docCtor){
 					rawData.push( this.docCtor.serialize(docs[i]) );
@@ -139,7 +145,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 					rawData.push( rawData[i] );
 				}
 			}
-		}else if(rawData instanceof this.docCtor){
+		}else if(docs instanceof this.docCtor){
 			rawData = this.docCtor.serialize(docs);
 		}else{
 			rawData = docs;
@@ -157,7 +163,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 		if(undefined === query){
 			query = {};
 		}
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			me = this
 		;
 		this.db.find(query, function(err, docs){
@@ -172,7 +178,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	 * @returns {Promise}
 	 */
 	Model.prototype.findOne = function(query){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			me = this
 		;
 		this.db.findOne(query, function(err, docs){
@@ -187,7 +193,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	 * @returns {Promise}
 	 */
 	Model.prototype.findByID = function(id){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			me = this
 		;
 		this.db.findOne({_id: id}, function(err, docs){
@@ -205,7 +211,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	 * @returns {primise}
 	 */
 	Model.prototype.save = function(docs){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			me = this
 		;
 		
@@ -218,9 +224,10 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 				}
 			}
 		;
+		
 		this.createDocuments(docs)
 			.done(function(docs){
-				if ($.isArray(docs)) {
+				if (utils.isArray(docs)) {
 					for (i = 0; i < docs.length; i++) {
 						add(docs[i]);
 					}
@@ -228,10 +235,10 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 					add(docs);
 				}
 
-				$.when(
+				utils.all(
 
-						this.insert(toInsert),
-						this.update(toUpdate)
+						me.insert(toInsert),
+						me.update(toUpdate)
 
 				).done(function(insertedDocs, updatedDocs) {
 					var docs = insertedDocs.concat(updatedDocs);
@@ -260,11 +267,14 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	 * @returns {Promise}
 	 */
 	Model.prototype.insert = function(docs){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			me = this
 		;
 		
+		window.debug ? console.log('inserting', this._getRaw(docs)) : '';
+		
 		this.db.insert(this._getRaw(docs), function(err, docs){
+			window.debug ? console.log('insert return', err, docs) : '';
 			me._dbReturn(defer, err, docs);
 		});
 		
@@ -278,13 +288,13 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	 * @returns {Promise}
 	 */
 	Model.prototype.update = function(docs){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			me = this,
 			promises = [],
 			i
 		;
 		
-		if(!$.isArray(docs)){
+		if(!utils.isArray(docs)){
 			return this.updateOne(docs);
 		}
 		
@@ -292,7 +302,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 			promises.push( this.updateOne(docs[i]) );
 		}
 		
-		$.when.apply(null, promises)
+		utils.all(promises)
 			.done(function(){
 				defer.resolve(Array.prototype.slice.call(arguments, 0));
 			})
@@ -311,7 +321,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	 * @returns {Promise}
 	 */
 	Model.prototype.updateOne = function(doc){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			me = this,
 			rawData = this._getRaw(doc)
 		;
@@ -324,13 +334,13 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	};
 	
 	Model.prototype.remove = function(docs){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			me = this,
 			promises = [],
 			i
 		;
 		
-		if(!$.isArray(docs)){
+		if(!utils.isArray(docs)){
 			return this.removeOne(docs);
 		}
 		
@@ -338,7 +348,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 			promises.push( this.removeOne(docs[i]) );
 		}
 		
-		$.when.apply(null, promises)
+		utils.all(promises)
 			.done(function(){
 				defer.resolve(Array.prototype.slice.call(arguments, 0));
 			})
@@ -351,7 +361,7 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 	};
 	
 	Model.prototype.removeOne = function(doc){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			rawData = this._getRaw(doc)
 		;
 		if(!!rawData._id){
@@ -369,8 +379,12 @@ define(['durandal/system', 'nwgui', 'jquery'], function(system, nwgui, $){
 		return defer.promise();
 	};
 	
-	Model.prototype.newDocument = function(){
-		return new this.docCtor;
+	Model.prototype.newDocument = function(rawData){
+		return new this.docCtor(rawData);
+	};
+	
+	Model.prototype.getDocumentConstructor = function(){
+		return this.docCtor;
 	};
 	
 	return Model;

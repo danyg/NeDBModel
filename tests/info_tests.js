@@ -18,17 +18,18 @@ var
 	specs = listDir(specPath, 'js'),
 	sources = listDir(appPath, 'js')
 ;
-function listDir(path, ext){
-	var dirList = fs.readdirSync(path);
-		rList = [],
-		i
+function listDir(fpath, ext){
+	var dirList = fs.readdirSync(fpath);
+		rList = []
 	;
 	dirList.forEach(function(item){
-		var stat = fs.statSync(path + '/' + item);
+		var RPath = path.resolve(fpath + '/' + item),
+			stat = fs.statSync(RPath)
+		;
 		if(stat.isDirectory()){
-			rList.concat(listDir(path + '/' + item));
+			rList.concat(listDir(RPath));
 		}else if(!ext || (item.substring(item.length - ext.length) === ext)){
-			rList.push(path + '/' + item);
+			rList.push(RPath);
 		}
 	});
 

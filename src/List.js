@@ -5,27 +5,36 @@
  * 
  */
 
-define(['jquery'], function($){
-	
+define(['./utils'], function(utils){
+
 	function ListAbstract(rawData){
 		if(!!rawData){
 			this.set(rawData);
 		}
 	}
 	
-	ListAbstract.prototype = Object.create(Array.prototype);
-	ListAbstract.prototype.constructor = ListAbstract;
-	
+	utils.inherits(ListAbstract, Array);
+
 	ListAbstract.prototype.set = function(rawData){
-		var i, item, dfrIX, promises = [], tmp;
+		var i, 
+			item, 
+			dfrIX,
+			promises = [], 
+			tmp, 
+			defer = utils.defer(),
+			me = this
+		;
+
 		for(i = 0; i < rawData.length; i++){
 			item = rawData[i];
-			if('string' === typeof(item) && item.indexOf('#REF') === 0){
-				// giveme things MODEL!
-				dfrIX = this.push(new this.docCtor);
-				promises.push(this._asyncSearch(dfrIX, item.substring(4)));
+			if('string' === typeof(item) && item.indexOf('#REF_') === 0){
+				promises.push(
+					this._asyncSearch(item.substring(5))
+				);
 			}else{
-				this.push(this.docCtor.constructor.unserialize(item));
+				promises.push( 
+					utils.deferredUnserializeAssignment(this.docCtor, item, this, 'LIST_' + this.docCtor.name+'_'+item.name)
+				);
 			}
 		}
 //		if(promises.length === 0){
@@ -34,12 +43,24 @@ define(['jquery'], function($){
 //			tmp.resolve();
 //		}else{
 //		}
-		this._promise = $.when.apply(null, promises).promise();
+		this._promise = utils.all(promises)
+			.then(
+				function(){	defer.resolve(me); }, 
+				defer.reject
+			)
+		;
+		
+		return defer.promise();
 	};
 	
-	ListAbstract.prototype._asyncSearch = function(dfrIX, _id){
-		var me = this;
-		return this.docCtor.prototype._model.findByID(_id)
+	ListAbstract.prototype._asyncSearch = function(_id){
+		var dfrIX, 
+			me = this,
+			promise = this.docCtor.prototype._model.findByID(_id)
+		;
+
+		dfrIX = this.push( new utils.AsyncDocument({_id: _id}, promise) ) - 1;
+		promise
 			.done(function(doc){
 				me[dfrIX] = doc;
 			})
@@ -47,6 +68,7 @@ define(['jquery'], function($){
 				throw TypeError(this.constructor.name + ' imposible to find ' + _id + ' document because: ' + err);
 			})
 		;
+		return promise;
 	};
 	
 	ListAbstract.prototype.onAllResultsReady = function(cbk){
@@ -55,45 +77,64 @@ define(['jquery'], function($){
 	ListAbstract.prototype.ready = ListAbstract.prototype.onAllResultsReady;
 
 	ListAbstract.prototype.push = function(doc){
-		if(doc instanceof this.docCtor){
-			Array.prototype.push(doc);
+		if(doc instanceof utils.AsyncDocument){
+			return Array.prototype.push.call(this, doc);
+		}else if(doc instanceof this.docCtor){
+			return Array.prototype.push.call(this, doc);
 		}else{
 			throw TypeError('The document is not a instance of ' + this.docCtor.name);
 		}
+	};
+	
+	ListAbstract.prototype.save = function(){
+		var i,
+			promises = []
+		;
+		
+		for(i=0; i < this.length; i++){
+			promises.push(this[i].save());
+		}
+
+		return utils.all(promises);
 	};
 
 	ListAbstract.serialize = function(instance){
 		var i = 0, 
 			doc,
-			docCtor = instance.prototype.docCtor,
+			docCtor,
 			serialized = []
 		;
+		if(!!instance && !!instance.docCtor){
+			docCtor = instance.docCtor;
 
-		for(i = 0; i < this.length; i++){
-			doc = this[i];
-			if(doc.hasOwnProperty('_id')){
-				serialized.push('#REF' + doc._id);
-			}else{
-				serialized.push(docCtor.serialize(doc));
+			for(i = 0; i < instance.length; i++){
+				doc = instance[i];
+				if(doc.hasOwnProperty('_id')){
+					serialized.push('#REF_' + doc._id);
+				}else{
+					serialized.push(docCtor.serialize(doc));
+				}
 			}
-		}
 
+		}
 		return serialized;
 	};
 	
 	function ListFactory(docCtor){
 		var List = (new Function(
-			'function List_' + docCtor.name + '(){ ListAbstract.apply(this, arguments); };'+
+			'function List_' + docCtor.name + '(){ this._superCtor.apply(this, arguments); };'+
 			'return List_' + docCtor.name + ';'
 		))();
 		
-		ListAbstract.prototype = Object.create(ListAbstract.prototype);
-		ListAbstract.prototype.constructor = List;
+		List.prototype = Object.create(ListAbstract.prototype);
+		List.prototype._superCtor = ListAbstract;
+		List.prototype.constructor = List;
 		
 		List.prototype.docCtor = docCtor;
 		List.serialize = ListAbstract.serialize;
 		List.unserialize = function(rawData){
-			return new List(rawData);
+			var o = new List();
+			return o.set(rawData);
 		};
 		
 		return List;

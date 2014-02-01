@@ -5,23 +5,37 @@
  *
  */
 
-define(['durandal/system', 'jquery'], function(system, $){
+define(['./utils'], function(utils){
+	'use strict';
 
-	var util = nrequire('util');
-
+	/**
+	 * @name SchemaDocument
+	 * @abstract
+	 * @class
+	 * @param {Object} rawData
+	 * @returns {SchemaDocument}
+	 */
 	function SchemaDocument(rawData){
 		if(!!rawData){
 			this.set(rawData);
 		}
 	}
 
+	/**
+	 * 
+	 * @param {Object} rawData
+	 * @returns {Promise}
+	 */
 	SchemaDocument.prototype.set = function(rawData){
-		var i, fName, fDef, 
+		var i, fName, fDef,
 			me = this,
-			defer = system.defer(),
+			defer = utils.defer(),
 			promises = []
 		;
+		
+window.debug ? console.log('SchemaDocument.set', this.constructor.name, rawData) : '';
 
+		var defer = utils.defer();
 		if(rawData.hasOwnProperty('_id')){
 			this._id = rawData._id;
 		}
@@ -30,31 +44,48 @@ define(['durandal/system', 'jquery'], function(system, $){
 			fName = this.fields[i];
 			fDef = this.schema[fName];
 			if(fDef.allowNull){
+				// if allowNull && the field is empty ... continue
 				if(!rawData.hasOwnProperty(fName)){
-					this[fName] = this.schema[fName].defaultValue ? this.schema[fName].defaultValue : null;
+					this[fName] = this.schema[fName].defaultValue ? 
+						this.schema[fName].defaultValue : 
+						null
+					;
 					continue;
-				}else if(rawData[fName] === null || rawData[fName] === undefined){
-					this[fName] = this.schema[fName].defaultValue ? this.schema[fName].defaultValue : null;
+				}else if(rawData[fName] === null || 
+					rawData[fName] === undefined
+				){
+					this[fName] = this.schema[fName].defaultValue ? 
+						this.schema[fName].defaultValue : 
+						null
+					;
 					continue;
 				}
-			}else{
-				if(!rawData.hasOwnProperty(fName)){
-					console.error(this.constructor.name + ' not allow ' + fName + ' to be null or undefined', rawData);
-					throw TypeError(this.constructor.name + ' not allow ' + fName + ' to be null or undefined');
-				}
+
+			}else if(!rawData.hasOwnProperty(fName)){
+				console.error(
+					this.constructor.name + ' not allow ' + fName + 
+					' to be null or undefined', rawData
+				);
+				throw TypeError(this.constructor.name + ' not allow ' + 
+					fName + ' to be null or undefined'
+				);
 			}
 
 			if(rawData[fName].constructor.name !== this.schema[fName].type.name){
 				try{
 					if(this.schema[fName].type.hasOwnProperty('unserialize')){
-						promises.push(
-							this.schema[fName].type.unserialize( rawData[fName] )
-							.done(function(doc){
-								me[fName] = doc;
-							})
-						);
+						if('string' === typeof(rawData[fName]) && 
+							rawData[fName].indexOf('#REF_') === 0
+						){
+							promises.push(
+								this._getRef(fName, rawData[fName])
+							);
+						}else{
+							promises.push(
+								this._unserializeDoc(fName, rawData[fName])
+							);
+						}
 					}else{
-
 						switch(this.schema[fName].type){
 							case Number:
 								this[fName] = parseFloat(rawData[fName], 10);
@@ -72,40 +103,93 @@ define(['durandal/system', 'jquery'], function(system, $){
 
 					}
 				}catch(e){
+window.debug ? console.group('DEBUGGIN ERROR LOG', rawData[fName] + ' can be converted to ' + this.schema[fName].type.name) : '';
+window.debug ? console.log(e.message) : '';
+window.debug ? console.log(e.stack) : '';
+window.debug ? console.groupEnd() : '';
+					
 					throw TypeError(rawData[fName] + ' can be converted to ' + this.schema[fName].type.name);
 				}
 			}else{
-				this[fName] = rawData[fName];				
+				this[fName] = rawData[fName];
 			}
-			
-			return $.when.apply(null, promises);
+
 		}
+		utils.all(promises)
+			.then(
+				function(){
+					defer.resolve(me); 
+				}, 
+				defer.reject
+			)
+		;
+		return defer.promise();
 	};
+
+	SchemaDocument.prototype._getRef = function(fName, ref){
+		var me = this;
+		return this.schema[fName].type.prototype._model.findByID( ref.substring(5) )
+			.done(function(doc){
+				me[fName] = doc;
+			})
+		;
+	};
+	
+	SchemaDocument.prototype._unserializeDoc = function(fName, item){
+		var me = this;
+		return this.schema[fName].type.unserialize( item )
+			.done(function(doc){
+				me[fName] = doc;
+			})
+		;
+	};
+	
 
 	SchemaDocument.prototype.isPersisted = function(){
 		return !!this._id;
 	};
 
 	SchemaDocument.prototype.save = function(){
-		var defer = system.defer(),
-			me = this
-		;
+		if(!!this._savingPromise){
+			return this._savingPromise;
+		}else{
+			var defer = utils.defer(),
+				me = this,
+				i,
+				rName,
+				promises = []
+			;
+			
+			this._savingPromise = defer.promise().always(function(){
+				delete me._savingPromise;
+			});
 
-		this._model.save(this)
-			.done(function(docs){
-				me.set(docs[0]);
-				defer.resolve(me);
-			})
-			.fail(function(err){
-				defer.reject(err);
-			})
-		;
+			for(i=0; i < this.relations.length; i++){
+				rName = this.relations[i];
+	window.debug ? console.log("SAVING: " + this.constructor.name + '.' + rName) : '';
+				if(!!this[rName]){
+					promises.push( this[rName].save() );
+				}
+			}
 
-		return defer.promise();
+			utils.all(promises).done(function(){
+				me._model.save(me)
+					.done(function(docs){
+						me.set(docs[0]);
+						defer.resolve(me);
+					})
+					.fail(function(err){
+						defer.reject(err);
+					})
+				;
+			});
+
+			return defer.promise();
+		}
 	};
 
 	SchemaDocument.prototype.remove = function(){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			me = this
 		;
 
@@ -130,7 +214,7 @@ define(['durandal/system', 'jquery'], function(system, $){
 	};
 
 	SchemaDocument.serialize = function(instance){
-		var rawData = {}, i, fName, fDef;
+		var rawData = {}, i, fName, fDef, item;
 
 		if(instance.hasOwnProperty('_id')){
 			rawData._id = instance._id;
@@ -139,13 +223,20 @@ define(['durandal/system', 'jquery'], function(system, $){
 		for(i = 0; i < instance.fields.length; i++){
 			fName = instance.fields[i];
 			fDef = instance.schema[fName];
+			item = instance[fName];
 
-			if(instance.hasOwnProperty(fName)){
+			if(instance.hasOwnProperty(fName) && !!instance[fName]){
 				if(instance.schema[fName].type.hasOwnProperty('serialize')){
-					rawData[fName] = instance.schema[fName].type.serialize( instance[fName] );
+					if(!!item._id){ // is persisted!
+						rawData[fName] = '#REF_' + item._id;
+					}else{
+						rawData[fName] = instance.schema[fName].type.serialize( instance[fName] );
+					}
 				}else{
 					// consider this as a basicType
-					rawData[fName] = instance[fName];
+					if(fName.charAt(0) !== '_'){
+						rawData[fName] = item;
+					}
 				}
 			}
 		}
@@ -154,7 +245,7 @@ define(['durandal/system', 'jquery'], function(system, $){
 	};
 
 	SchemaDocument.inherit = function(ctor, schema){
-		util.inherits(ctor, SchemaDocument);
+		utils.inherits(ctor, SchemaDocument);
 		ctor.prototype.schema = _normalizeSchema(ctor, schema);
 
 		if(!ctor.hasOwnProperty('serialize')){
@@ -170,7 +261,7 @@ define(['durandal/system', 'jquery'], function(system, $){
 		if(!ctor.hasOwnProperty('inherit')){
 			var subExtend = function(subCtor, schema){
 				var mergedSchema = $.extend({}, ctor.prototype.schema, schema);
-				util.inherits(subCtor, ctor);
+				utils.inherits(subCtor, ctor);
 
 				subCtor.prototype.schema = _normalizeSchema(subCtor, mergedSchema);
 
@@ -200,6 +291,7 @@ define(['durandal/system', 'jquery'], function(system, $){
 
 		ctor.prototype.fields = [];
 		ctor.prototype.unique = [];
+		ctor.prototype.relations = [];
 
 		for(fName in schema){
 			if(schema.hasOwnProperty(fName)){
@@ -226,6 +318,12 @@ define(['durandal/system', 'jquery'], function(system, $){
 				}
 
 				ctor.prototype.fields.push(fName);
+				
+				if(normalizedSchema[fName].type.serialize && 
+					normalizedSchema[fName].type.unserialize){
+					
+					ctor.prototype.relations.push(fName);
+				}
 			}
 		}
 

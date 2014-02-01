@@ -5,7 +5,7 @@
  *
  */
 
-define(['durandal/system'], function(system){
+define(['./utils'], function(utils){
 	'use strict';
 
 	function SchemaLessDocument(){}
@@ -14,7 +14,7 @@ define(['durandal/system'], function(system){
 		return instance;
 	};
 	SchemaLessDocument.unserialize = function(rawData){
-		var defer = system.defer(),
+		var defer = utils.defer(),
 			fName
 		;
 
